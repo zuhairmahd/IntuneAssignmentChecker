@@ -31,11 +31,6 @@
 - [🤝 Contributing](#-contributing)
 - [📄 License](#-license)
 
-## 💬 Community
-
-Join our Discord channel to discuss bugs, share ideas, and provide feedback:
-[Join Discord](https://discord.gg/BQSCU9eJ)
-
 ## Quick Start
 
 > **Important**: All commands must be run in a PowerShell 7 session. The script will not work in PowerShell 5.1 or earlier versions.
@@ -117,6 +112,7 @@ Your Entra ID application registration needs these permissions:
 | DeviceManagementApps.Read.All | Application | Read Microsoft Intune apps |
 | DeviceManagementConfiguration.Read.All | Application | Read Microsoft Intune device configuration and policies |
 | DeviceManagementManagedDevices.Read.All | Application | Read Microsoft Intune devices |
+| DeviceManagementServiceConfig.Read.All | Application | 	Read Microsoft Intune configuration |
 
 ## 🔐 Authentication Options
 

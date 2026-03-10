@@ -1,20 +1,33 @@
 $context = Get-MgContext
 $environment = $context.Environment
 
-$GraphEndpoint = switch ($environment) {
-    "Global" { "https://graph.microsoft.com" }
-    "USGov" { "https://graph.microsoft.us" }
-    "USGovDoD" { "https://dod-graph.microsoft.us" }
+$GraphEndpoint = switch ($environment)
+{
+    "Global"
+    {
+        "https://graph.microsoft.com"
+    }
+    "USGov"
+    {
+        "https://graph.microsoft.us"
+    }
+    "USGovDoD"
+    {
+        "https://dod-graph.microsoft.us"
+    }
 }
 # Function to get assignment information
-function Get-AssignmentInfo {
+function Get-AssignmentInfo
+{
     param (
         [Parameter(Mandatory = $true)]
         [AllowNull()]
+        [AllowEmptyCollection()]
         [array]$Assignments
     )
 
-    if ($null -eq $Assignments -or $Assignments.Count -eq 0) {
+    if ($null -eq $Assignments -or $Assignments.Count -eq 0)
+    {
         return @{
             Type   = "None"
             Target = "Not Assigned"
@@ -24,46 +37,71 @@ function Get-AssignmentInfo {
     $types = @()
     $targets = @()
 
-    foreach ($assignment in $Assignments) {
+    foreach ($assignment in $Assignments)
+    {
         $type = "None"
         $target = "Not Assigned"
         $groupId = $null
 
         # Handle Graph API format (with target object)
-        if ($assignment.target) {
-            switch ($assignment.target.'@odata.type') {
-                '#microsoft.graph.allLicensedUsersAssignmentTarget' {
+        if ($assignment.target)
+        {
+            switch ($assignment.target.'@odata.type')
+            {
+                '#microsoft.graph.allLicensedUsersAssignmentTarget'
+                {
                     $type = "All Users"
                     $target = "All Users"
                 }
-                '#microsoft.graph.allDevicesAssignmentTarget' {
+                '#microsoft.graph.allDevicesAssignmentTarget'
+                {
                     $type = "All Devices"
                     $target = "All Devices"
                 }
-                '#microsoft.graph.groupAssignmentTarget' {
+                '#microsoft.graph.groupAssignmentTarget'
+                {
                     $type = "Group"
                     $groupId = $assignment.target.groupId
                 }
-                '#microsoft.graph.exclusionGroupAssignmentTarget' {
+                '#microsoft.graph.exclusionGroupAssignmentTarget'
+                {
                     $type = "Exclude"
                     $groupId = $assignment.target.groupId
                 }
             }
         }
         # Handle standard format (with Reason and GroupId)
-        else {
-            $type = switch ($assignment.Reason) {
-                "All Users" { "All Users"; break }
-                "All Devices" { "All Devices"; break }
-                "Group Assignment" { "Group"; break }
-                "Exclude" { "Exclude"; break }
-                default { "None" }
+        else
+        {
+            $type = switch ($assignment.Reason)
+            {
+                "All Users"
+                {
+                    "All Users"; break
+                }
+                "All Devices"
+                {
+                    "All Devices"; break
+                }
+                "Group Assignment"
+                {
+                    "Group"; break
+                }
+                "Exclude"
+                {
+                    "Exclude"; break
+                }
+                default
+                {
+                    "None"
+                }
             }
             $groupId = $assignment.GroupId
         }
 
         # Get group name if we have a group ID
-        if ($groupId) {
+        if ($groupId)
+        {
             $groupInfo = Get-GroupInfo -GroupId $groupId
             $target = $groupInfo.DisplayName
         }
@@ -73,19 +111,24 @@ function Get-AssignmentInfo {
     }
 
     # Determine the primary type (prioritize All Users/Devices over Group)
-    $primaryType = if ($types -contains "All Users") {
+    $primaryType = if ($types -contains "All Users")
+    {
         "All Users"
     }
-    elseif ($types -contains "All Devices") {
+    elseif ($types -contains "All Devices")
+    {
         "All Devices"
     }
-    elseif ($types -contains "Group") {
+    elseif ($types -contains "Group")
+    {
         "Group"
     }
-    elseif ($types -contains "Exclude") {
+    elseif ($types -contains "Exclude")
+    {
         "Exclude"
     }
-    else {
+    else
+    {
         "None"
     }
 
@@ -105,29 +148,36 @@ $script:IntentTemplateSubtypeToFamily = @{
 }
 $script:TemplateIdToFamilyCache = $null
 
-function Get-IntentTemplateFamilyLookup {
-    if ($null -ne $script:TemplateIdToFamilyCache) {
+function Get-IntentTemplateFamilyLookup
+{
+    if ($null -ne $script:TemplateIdToFamilyCache)
+    {
         return $script:TemplateIdToFamilyCache
     }
 
     $script:TemplateIdToFamilyCache = @{}
-    try {
+    try
+    {
         $templates = Get-IntuneEntities -EntityType "deviceManagement/templates"
-        foreach ($template in $templates) {
+        foreach ($template in $templates)
+        {
             $subtype = $template.templateSubtype
-            if ($subtype -and $script:IntentTemplateSubtypeToFamily.ContainsKey($subtype)) {
+            if ($subtype -and $script:IntentTemplateSubtypeToFamily.ContainsKey($subtype))
+            {
                 $script:TemplateIdToFamilyCache[$template.id] = $script:IntentTemplateSubtypeToFamily[$subtype]
             }
         }
     }
-    catch {
+    catch
+    {
         Write-Warning "Unable to fetch deviceManagement/templates for intent enrichment: $($_.Exception.Message)"
     }
 
     return $script:TemplateIdToFamilyCache
 }
 
-function Add-IntentTemplateFamilyInfo {
+function Add-IntentTemplateFamilyInfo
+{
     param (
         [Parameter(Mandatory = $true)]
         [System.Collections.ArrayList]$IntentPolicies
@@ -135,9 +185,12 @@ function Add-IntentTemplateFamilyInfo {
 
     $lookup = Get-IntentTemplateFamilyLookup
 
-    foreach ($intent in $IntentPolicies) {
-        if ($intent.templateId -and $lookup.ContainsKey($intent.templateId)) {
-            if (-not $intent.templateReference) {
+    foreach ($intent in $IntentPolicies)
+    {
+        if ($intent.templateId -and $lookup.ContainsKey($intent.templateId))
+        {
+            if (-not $intent.templateReference)
+            {
                 $intent | Add-Member -NotePropertyName 'templateReference' -NotePropertyValue @{
                     templateFamily = $lookup[$intent.templateId]
                 }
@@ -146,7 +199,8 @@ function Add-IntentTemplateFamilyInfo {
     }
 }
 
-function Export-HTMLReport {
+function Export-HTMLReport
+{
     param (
         [Parameter(Mandatory = $true)]
         [string]$FilePath
@@ -552,7 +606,7 @@ function Export-HTMLReport {
                         if (filterValue === 'all') {
                             dataTable.column(colIdx).search('').draw();
                         } else {
-                            var escaped = filterValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            var escaped = filterValue.replace(/[.*+?^`${}()|[\]\\]/g, '\\`$&');
                             dataTable.column(colIdx).search('(?:^|,\\s*)' + escaped + '(?:\\s*,|$)', true, false).draw();
                         }
                     }
@@ -569,7 +623,7 @@ function Export-HTMLReport {
                         if (filterValue === 'all') {
                             dataTable.column(colIdx).search('').draw();
                         } else {
-                            var escaped = filterValue.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            var escaped = filterValue.replace(/[.*+?^`${}()|[\]\\]/g, '\\`$&');
                             dataTable.column(colIdx).search('^' + escaped + '$', true, false).draw();
                         }
                     }
@@ -596,33 +650,34 @@ function Export-HTMLReport {
 
     # Initialize collections
     $policies = @{
-        DeviceConfigs             = @()
-        SettingsCatalog           = @()
-        AdminTemplates            = @()
-        CompliancePolicies        = @()
-        AppProtectionPolicies     = @()
-        AppConfigurationPolicies  = @()
-        PlatformScripts           = @()
-        HealthScripts             = @()
-        RequiredApps              = @()
-        AvailableApps             = @()
-        UninstallApps             = @()
-        DeploymentProfiles        = @()
-        ESPProfiles              = @()
-        AntivirusProfiles         = @()
-        DiskEncryptionProfiles    = @()
-        FirewallProfiles          = @()
-        EndpointDetectionProfiles = @()
-        AttackSurfaceProfiles     = @()
-        AccountProtectionProfiles = @()
+        DeviceConfigs               = @()
+        SettingsCatalog             = @()
+        AdminTemplates              = @()
+        CompliancePolicies          = @()
+        AppProtectionPolicies       = @()
+        AppConfigurationPolicies    = @()
+        PlatformScripts             = @()
+        HealthScripts               = @()
+        RequiredApps                = @()
+        AvailableApps               = @()
+        UninstallApps               = @()
+        DeploymentProfiles          = @()
+        ESPProfiles                 = @()
+        AntivirusProfiles           = @()
+        DiskEncryptionProfiles      = @()
+        FirewallProfiles            = @()
+        EndpointDetectionProfiles   = @()
+        AttackSurfaceProfiles       = @()
+        AccountProtectionProfiles   = @()
         CloudPCProvisioningPolicies = @()
-        CloudPCUserSettings       = @()
+        CloudPCUserSettings         = @()
     }
 
     # Fetch all policies
     Write-Host "Fetching Device Configurations..." -ForegroundColor Yellow
     $deviceConfigs = Get-IntuneEntities -EntityType "deviceConfigurations"
-    foreach ($config in $deviceConfigs) {
+    foreach ($config in $deviceConfigs)
+    {
         $assignments = Get-IntuneAssignments -EntityType "deviceConfigurations" -EntityId $config.id
         $assignmentInfo = Get-AssignmentInfo -Assignments $assignments
         $policies.DeviceConfigs += @{
@@ -638,15 +693,24 @@ function Export-HTMLReport {
 
     Write-Host "Fetching Settings Catalog Policies..." -ForegroundColor Yellow
     $settingsCatalog = Get-IntuneEntities -EntityType "configurationPolicies"
-    foreach ($policy in $settingsCatalog) {
+    foreach ($policy in $settingsCatalog)
+    {
         # Exclude Endpoint Security policies from this generic Settings Catalog fetch
-        if ($policy.templateReference -and $policy.templateReference.templateFamily -like "endpointSecurity*") {
+        if ($policy.templateReference -and $policy.templateReference.templateFamily -like "endpointSecurity*")
+        {
             continue
         }
         $assignments = Get-IntuneAssignments -EntityType "configurationPolicies" -EntityId $policy.id
         $assignmentInfo = Get-AssignmentInfo -Assignments $assignments
         $policies.SettingsCatalog += @{
-            Name           = if (-not [string]::IsNullOrWhiteSpace($policy.displayName)) { $policy.displayName } else { $policy.name }
+            Name           = if (-not [string]::IsNullOrWhiteSpace($policy.displayName))
+            {
+                $policy.displayName
+            }
+            else
+            {
+                $policy.name
+            }
             ID             = $policy.id
             Type           = "Settings Catalog"
             Platform       = Get-PolicyPlatform -Policy $policy
@@ -658,7 +722,8 @@ function Export-HTMLReport {
 
     Write-Host "Fetching Administrative Templates..." -ForegroundColor Yellow
     $adminTemplates = Get-IntuneEntities -EntityType "groupPolicyConfigurations"
-    foreach ($template in $adminTemplates) {
+    foreach ($template in $adminTemplates)
+    {
         $assignments = Get-IntuneAssignments -EntityType "groupPolicyConfigurations" -EntityId $template.id
         $assignmentInfo = Get-AssignmentInfo -Assignments $assignments
         $policies.AdminTemplates += @{
@@ -674,7 +739,8 @@ function Export-HTMLReport {
 
     Write-Host "Fetching Compliance Policies..." -ForegroundColor Yellow
     $compliancePolicies = Get-IntuneEntities -EntityType "deviceCompliancePolicies"
-    foreach ($policy in $compliancePolicies) {
+    foreach ($policy in $compliancePolicies)
+    {
         $assignments = Get-IntuneAssignments -EntityType "deviceCompliancePolicies" -EntityId $policy.id
         $assignmentInfo = Get-AssignmentInfo -Assignments $assignments
         $policies.CompliancePolicies += @{
@@ -690,26 +756,36 @@ function Export-HTMLReport {
 
     Write-Host "Fetching App Protection Policies..." -ForegroundColor Yellow
     $appProtectionPolicies = Get-IntuneEntities -EntityType "deviceAppManagement/managedAppPolicies"
-    foreach ($policy in $appProtectionPolicies) {
+    foreach ($policy in $appProtectionPolicies)
+    {
         $policyType = $policy.'@odata.type'
-        $assignmentsUri = switch ($policyType) {
-            "#microsoft.graph.androidManagedAppProtection" {
+        $assignmentsUri = switch ($policyType)
+        {
+            "#microsoft.graph.androidManagedAppProtection"
+            {
                 "$GraphEndpoint/beta/deviceAppManagement/androidManagedAppProtections('$($policy.id)')/assignments"
             }
-            "#microsoft.graph.iosManagedAppProtection" {
+            "#microsoft.graph.iosManagedAppProtection"
+            {
                 "$GraphEndpoint/beta/deviceAppManagement/iosManagedAppProtections('$($policy.id)')/assignments"
             }
-            "#microsoft.graph.windowsManagedAppProtection" {
+            "#microsoft.graph.windowsManagedAppProtection"
+            {
                 "$GraphEndpoint/beta/deviceAppManagement/windowsManagedAppProtections('$($policy.id)')/assignments"
             }
-            default { $null }
+            default
+            {
+                $null
+            }
         }
 
-        if ($assignmentsUri) {
-            try {
+        if ($assignmentsUri)
+        {
+            try
+            {
                 $assignmentResponse = Invoke-MgGraphRequest -Uri $assignmentsUri -Method Get
                 # Pass the raw .value to Get-AssignmentInfo as it expects an array of assignment objects
-                $assignmentInfo = Get-AssignmentInfo -Assignments $assignmentResponse.value 
+                $assignmentInfo = Get-AssignmentInfo -Assignments $assignmentResponse.value
 
                 $policies.AppProtectionPolicies += @{
                     Name           = $policy.displayName
@@ -721,7 +797,8 @@ function Export-HTMLReport {
                     AssignedTo     = $assignmentInfo.Target
                 }
             }
-            catch {
+            catch
+            {
                 Write-Host "Error fetching assignments for App Protection policy $($policy.displayName): $($_.Exception.Message)" -ForegroundColor Red
             }
         }
@@ -730,7 +807,8 @@ function Export-HTMLReport {
     # Get Platform Scripts
     Write-Host "Fetching Platform Scripts..." -ForegroundColor Yellow
     $platformScripts = Get-IntuneEntities -EntityType "deviceManagementScripts"
-    foreach ($script in $platformScripts) {
+    foreach ($script in $platformScripts)
+    {
         $assignments = Get-IntuneAssignments -EntityType "deviceManagementScripts" -EntityId $script.id
         $assignmentInfo = Get-AssignmentInfo -Assignments $assignments
         $policies.PlatformScripts += @{
@@ -747,7 +825,8 @@ function Export-HTMLReport {
     # Get Proactive Remediation Scripts
     Write-Host "Fetching Proactive Remediation Scripts..." -ForegroundColor Yellow
     $healthScripts = Get-IntuneEntities -EntityType "deviceHealthScripts"
-    foreach ($script in $healthScripts) {
+    foreach ($script in $healthScripts)
+    {
         $assignments = Get-IntuneAssignments -EntityType "deviceHealthScripts" -EntityId $script.id
         $assignmentInfo = Get-AssignmentInfo -Assignments $assignments
         $policies.HealthScripts += @{
@@ -764,7 +843,8 @@ function Export-HTMLReport {
     # Get Autopilot Deployment Profiles
     Write-Host "Fetching Autopilot Deployment Profiles..." -ForegroundColor Yellow
     $autoProfiles = Get-IntuneEntities -EntityType "windowsAutopilotDeploymentProfiles"
-    foreach ($profile in $autoProfiles) {
+    foreach ($profile in $autoProfiles)
+    {
         $assignments = Get-IntuneAssignments -EntityType "windowsAutopilotDeploymentProfiles" -EntityId $profile.id
         $assignmentInfo = Get-AssignmentInfo -Assignments $assignments
         $policies.DeploymentProfiles += @{
@@ -782,7 +862,8 @@ function Export-HTMLReport {
     Write-Host "Fetching Enrollment Status Page Profiles..." -ForegroundColor Yellow
     $enrollmentConfigs = Get-IntuneEntities -EntityType "deviceEnrollmentConfigurations"
     $espProfiles = $enrollmentConfigs | Where-Object { $_.'@odata.type' -match 'EnrollmentCompletionPageConfiguration' }
-    foreach ($esp in $espProfiles) {
+    foreach ($esp in $espProfiles)
+    {
         $assignments = Get-IntuneAssignments -EntityType "deviceEnrollmentConfigurations" -EntityId $esp.id
         $assignmentInfo = Get-AssignmentInfo -Assignments $assignments
         $policies.ESPProfiles += @{
@@ -798,13 +879,22 @@ function Export-HTMLReport {
 
     # Get Windows 365 Cloud PC Provisioning Policies
     Write-Host "Fetching Windows 365 Cloud PC Provisioning Policies..." -ForegroundColor Yellow
-    try {
+    try
+    {
         $cloudPCProvisioningPolicies = Get-IntuneEntities -EntityType "virtualEndpoint/provisioningPolicies"
-        foreach ($policy in $cloudPCProvisioningPolicies) {
+        foreach ($policy in $cloudPCProvisioningPolicies)
+        {
             $rawAssignments = Get-IntuneAssignments -EntityType "virtualEndpoint/provisioningPolicies" -EntityId $policy.id
             $assignmentInfo = Get-AssignmentInfo -Assignments $rawAssignments
             $policies.CloudPCProvisioningPolicies += @{
-                Name           = if (-not [string]::IsNullOrWhiteSpace($policy.displayName)) { $policy.displayName } else { $policy.name }
+                Name           = if (-not [string]::IsNullOrWhiteSpace($policy.displayName))
+                {
+                    $policy.displayName
+                }
+                else
+                {
+                    $policy.name
+                }
                 ID             = $policy.id
                 Type           = "Windows 365 Cloud PC Provisioning Policy"
                 Platform       = "Windows"
@@ -814,19 +904,29 @@ function Export-HTMLReport {
             }
         }
     }
-    catch {
+    catch
+    {
         Write-Warning "Unable to fetch Windows 365 Cloud PC Provisioning Policies: $($_.Exception.Message)"
     }
 
     # Get Windows 365 Cloud PC User Settings
     Write-Host "Fetching Windows 365 Cloud PC User Settings..." -ForegroundColor Yellow
-    try {
+    try
+    {
         $cloudPCUserSettings = Get-IntuneEntities -EntityType "virtualEndpoint/userSettings"
-        foreach ($setting in $cloudPCUserSettings) {
+        foreach ($setting in $cloudPCUserSettings)
+        {
             $rawAssignments = Get-IntuneAssignments -EntityType "virtualEndpoint/userSettings" -EntityId $setting.id
             $assignmentInfo = Get-AssignmentInfo -Assignments $rawAssignments
             $policies.CloudPCUserSettings += @{
-                Name           = if (-not [string]::IsNullOrWhiteSpace($setting.displayName)) { $setting.displayName } else { $setting.name }
+                Name           = if (-not [string]::IsNullOrWhiteSpace($setting.displayName))
+                {
+                    $setting.displayName
+                }
+                else
+                {
+                    $setting.name
+                }
                 ID             = $setting.id
                 Type           = "Windows 365 Cloud PC User Setting"
                 Platform       = "Windows"
@@ -836,7 +936,8 @@ function Export-HTMLReport {
             }
         }
     }
-    catch {
+    catch
+    {
         Write-Warning "Unable to fetch Windows 365 Cloud PC User Settings: $($_.Exception.Message)"
     }
 
@@ -850,20 +951,31 @@ function Export-HTMLReport {
         @{ Name = "Account Protection"; Key = "AccountProtectionProfiles"; TemplateFamily = "endpointSecurityAccountProtection"; UserFriendlyType = "Account Protection Profile" }
     )
 
-    foreach ($esCategory in $endpointSecurityCategories) {
+    foreach ($esCategory in $endpointSecurityCategories)
+    {
         Write-Host "Fetching Endpoint Security - $($esCategory.Name) Policies..." -ForegroundColor Yellow
         $processedIds = [System.Collections.Generic.HashSet[string]]::new()
 
         # 1. Check configurationPolicies (Settings Catalog)
         $allConfigPolicies = Get-IntuneEntities -EntityType "configurationPolicies"
         $configPolicies = $allConfigPolicies | Where-Object { $_.templateReference -and $_.templateReference.templateFamily -eq $esCategory.TemplateFamily }
-        if ($configPolicies) {
-            foreach ($policy in $configPolicies) {
-                if ($processedIds.Add($policy.id)) {
+        if ($configPolicies)
+        {
+            foreach ($policy in $configPolicies)
+            {
+                if ($processedIds.Add($policy.id))
+                {
                     $rawAssignments = Get-IntuneAssignments -EntityType "configurationPolicies" -EntityId $policy.id
                     $assignmentInfo = Get-AssignmentInfo -Assignments $rawAssignments
                     $policies[$esCategory.Key] += @{
-                        Name           = if (-not [string]::IsNullOrWhiteSpace($policy.displayName)) { $policy.displayName } else { $policy.name }
+                        Name           = if (-not [string]::IsNullOrWhiteSpace($policy.displayName))
+                        {
+                            $policy.displayName
+                        }
+                        else
+                        {
+                            $policy.name
+                        }
                         ID             = $policy.id
                         Type           = $esCategory.UserFriendlyType
                         Platform       = Get-PolicyPlatform -Policy $policy
@@ -879,14 +991,25 @@ function Export-HTMLReport {
         $allIntentPolicies = Get-IntuneEntities -EntityType "deviceManagement/intents"
         Add-IntentTemplateFamilyInfo -IntentPolicies $allIntentPolicies
         $intentPolicies = $allIntentPolicies | Where-Object { $_.templateReference -and $_.templateReference.templateFamily -eq $esCategory.TemplateFamily }
-        if ($intentPolicies) {
-            foreach ($policy in $intentPolicies) {
-                if ($processedIds.Add($policy.id)) {
-                    try {
+        if ($intentPolicies)
+        {
+            foreach ($policy in $intentPolicies)
+            {
+                if ($processedIds.Add($policy.id))
+                {
+                    try
+                    {
                         $assignmentsResponse = Invoke-MgGraphRequest -Uri "$GraphEndpoint/beta/deviceManagement/intents/$($policy.id)/assignments" -Method Get
                         $assignmentInfo = Get-AssignmentInfo -Assignments $assignmentsResponse.value # This expects an array
                         $policies[$esCategory.Key] += @{
-                            Name           = if (-not [string]::IsNullOrWhiteSpace($policy.displayName)) { $policy.displayName } else { $policy.name }
+                            Name           = if (-not [string]::IsNullOrWhiteSpace($policy.displayName))
+                            {
+                                $policy.displayName
+                            }
+                            else
+                            {
+                                $policy.name
+                            }
                             ID             = $policy.id
                             Type           = $esCategory.UserFriendlyType
                             Platform       = Get-PolicyPlatform -Policy $policy
@@ -894,13 +1017,14 @@ function Export-HTMLReport {
                             AssignmentType = $assignmentInfo.Type
                             AssignedTo     = $assignmentInfo.Target
                         }
-                    } 
-                    catch {
+                    }
+                    catch
+                    {
                         Write-Host "Error fetching assignments for $($esCategory.Name) intent $($policy.displayName): $($_.Exception.Message)" -ForegroundColor Red
                     }
-                } 
-            } 
-        } 
+                }
+            }
+        }
     }
 
     # Get Apps
@@ -908,14 +1032,17 @@ function Export-HTMLReport {
     $appUri = "$GraphEndpoint/beta/deviceAppManagement/mobileApps?`$filter=isAssigned eq true"
     $appResponse = Invoke-MgGraphRequest -Uri $appUri -Method Get
     $allApps = $appResponse.value
-    while ($appResponse.'@odata.nextLink') {
+    while ($appResponse.'@odata.nextLink')
+    {
         $appResponse = Invoke-MgGraphRequest -Uri $appResponse.'@odata.nextLink' -Method Get
         $allApps += $appResponse.value
     }
 
-    foreach ($app in $allApps) {
+    foreach ($app in $allApps)
+    {
         # Skip built-in and Microsoft apps
-        if ($app.isFeatured -or $app.isBuiltIn) {
+        if ($app.isFeatured -or $app.isBuiltIn)
+        {
             continue
         }
 
@@ -923,13 +1050,14 @@ function Export-HTMLReport {
         $assignmentsUri = "$GraphEndpoint/beta/deviceAppManagement/mobileApps('$appId')/assignments"
         $assignmentResponse = Invoke-MgGraphRequest -Uri $assignmentsUri -Method Get
 
-        foreach ($assignment in $assignmentResponse.value) {
+        foreach ($assignment in $assignmentResponse.value)
+        {
             # Get-AssignmentInfo expects an array of assignment objects.
             # Here, $assignment is a single assignment object from the loop.
             # We need to wrap it in an array for Get-AssignmentInfo.
             $currentAssignmentArray = @($assignment) # Ensure it's an array
             $assignmentInfo = Get-AssignmentInfo -Assignments $currentAssignmentArray
-            
+
             $appInfo = @{
                 Name           = $app.displayName
                 ID             = $app.id
@@ -940,45 +1068,68 @@ function Export-HTMLReport {
                 AssignedTo     = $assignmentInfo.Target
             }
 
-            switch ($assignment.intent) {
-                "required" { $policies.RequiredApps += $appInfo }
-                "available" { $policies.AvailableApps += $appInfo }
-                "uninstall" { $policies.UninstallApps += $appInfo }
+            switch ($assignment.intent)
+            {
+                "required"
+                {
+                    $policies.RequiredApps += $appInfo
+                }
+                "available"
+                {
+                    $policies.AvailableApps += $appInfo
+                }
+                "uninstall"
+                {
+                    $policies.UninstallApps += $appInfo
+                }
             }
         }
     }
 
     # Collect unique scope tags across all policies
     $allScopeTags = [System.Collections.Generic.HashSet[string]]::new()
-    foreach ($catKey in $policies.Keys) {
-        foreach ($p in $policies[$catKey]) {
-            if ($p.ScopeTags) {
-                foreach ($tag in ($p.ScopeTags -split ',')) {
+    foreach ($catKey in $policies.Keys)
+    {
+        foreach ($p in $policies[$catKey])
+        {
+            if ($p.ScopeTags)
+            {
+                foreach ($tag in ($p.ScopeTags -split ','))
+                {
                     $trimmed = $tag.Trim()
-                    if ($trimmed) { [void]$allScopeTags.Add($trimmed) }
+                    if ($trimmed)
+                    {
+                        [void]$allScopeTags.Add($trimmed)
+                    }
                 }
             }
         }
     }
     $scopeTagOptions = ($allScopeTags | Sort-Object | ForEach-Object {
-        $escaped = $_ -replace '&', '&amp;' -replace "'", '&#39;' -replace '<', '&lt;' -replace '>', '&gt;'
-        "<option value='$escaped'>$escaped</option>"
-    }) -join "`n                            "
+            $escaped = $_ -replace '&', '&amp;' -replace "'", '&#39;' -replace '<', '&lt;' -replace '>', '&gt;'
+            "<option value='$escaped'>$escaped</option>"
+        }) -join "`n                            "
 
     # Collect unique platforms across all policies
     $allPlatforms = [System.Collections.Generic.HashSet[string]]::new()
-    foreach ($catKey in $policies.Keys) {
-        foreach ($p in $policies[$catKey]) {
-            if ($p.Platform) {
+    foreach ($catKey in $policies.Keys)
+    {
+        foreach ($p in $policies[$catKey])
+        {
+            if ($p.Platform)
+            {
                 $trimmed = $p.Platform.Trim()
-                if ($trimmed) { [void]$allPlatforms.Add($trimmed) }
+                if ($trimmed)
+                {
+                    [void]$allPlatforms.Add($trimmed)
+                }
             }
         }
     }
     $platformOptions = ($allPlatforms | Sort-Object | ForEach-Object {
-        $escaped = $_ -replace '&', '&amp;' -replace "'", '&#39;' -replace '<', '&lt;' -replace '>', '&gt;'
-        "<option value='$escaped'>$escaped</option>"
-    }) -join "`n                            "
+            $escaped = $_ -replace '&', '&amp;' -replace "'", '&#39;' -replace '<', '&lt;' -replace '>', '&gt;'
+            "<option value='$escaped'>$escaped</option>"
+        }) -join "`n                            "
 
     # Generate summary statistics
     $summaryStats = @{
@@ -990,7 +1141,7 @@ function Export-HTMLReport {
     }
 
     $categories = @(
-        @{ Key = 'all'; Name = 'All Policies & Apps' }, 
+        @{ Key = 'all'; Name = 'All Policies & Apps' },
         @{ Key = 'DeviceConfigs'; Name = 'Device Configurations' },
         @{ Key = 'SettingsCatalog'; Name = 'Settings Catalog' },
         @{ Key = 'AdminTemplates'; Name = 'Administrative Templates' },
@@ -1014,10 +1165,13 @@ function Export-HTMLReport {
     )
 
     # Recalculate summary stats for all defined categories in $policies
-    foreach ($category in $categories | Where-Object { $_.Key -ne 'all' }) {
-        if ($policies.ContainsKey($category.Key)) {
+    foreach ($category in $categories | Where-Object { $_.Key -ne 'all' })
+    {
+        if ($policies.ContainsKey($category.Key))
+        {
             $items = $policies[$category.Key]
-            if ($null -ne $items) { 
+            if ($null -ne $items)
+            {
                 $summaryStats.TotalPolicies += $items.Count
                 $summaryStats.AllUsers += ($items | Where-Object { $_.AssignmentType -eq "All Users" }).Count
                 $summaryStats.AllDevices += ($items | Where-Object { $_.AssignmentType -eq "All Devices" }).Count
@@ -1026,12 +1180,13 @@ function Export-HTMLReport {
             }
         }
     }
-    
+
     # Build dynamic tab headers and tab content
     $tabHeaders = ""
     $tabContent = ""
 
-    foreach ($category in $categories) {
+    foreach ($category in $categories)
+    {
         $isActive = ($category -eq $categories[0])
         $categoryId = $category.Key.ToLower()
 
@@ -1050,18 +1205,39 @@ function Export-HTMLReport {
 </li>
 "@
 
-        if ($category.Key -eq 'all') {
-            $allTableRows = foreach ($cat in $categories | Where-Object { $_.Key -ne 'all' }) {
-                if ($policies.ContainsKey($cat.Key)) {
+        if ($category.Key -eq 'all')
+        {
+            $allTableRows = foreach ($cat in $categories | Where-Object { $_.Key -ne 'all' })
+            {
+                if ($policies.ContainsKey($cat.Key))
+                {
                     $categoryPolicies = $policies[$cat.Key]
-                    if ($categoryPolicies) {
-                        foreach ($p in $categoryPolicies) {
-                            $badgeClass = switch ($p.AssignmentType) {
-                                'All Users' { 'badge-all-users' }
-                                'All Devices' { 'badge-all-devices' }
-                                'Group' { 'badge-group' }
-                                'Exclude' { 'badge-exclude' }
-                                default { 'badge-none' }
+                    if ($categoryPolicies)
+                    {
+                        foreach ($p in $categoryPolicies)
+                        {
+                            $badgeClass = switch ($p.AssignmentType)
+                            {
+                                'All Users'
+                                {
+                                    'badge-all-users'
+                                }
+                                'All Devices'
+                                {
+                                    'badge-all-devices'
+                                }
+                                'Group'
+                                {
+                                    'badge-group'
+                                }
+                                'Exclude'
+                                {
+                                    'badge-exclude'
+                                }
+                                default
+                                {
+                                    'badge-none'
+                                }
                             }
                             "<tr>
                                 <td>$($p.Name)</td>
@@ -1098,18 +1274,38 @@ function Export-HTMLReport {
 </div>
 "@
         }
-        else {
+        else
+        {
             $tableRows = "" # Initialize to empty string
-            if ($policies.ContainsKey($category.Key)) {
+            if ($policies.ContainsKey($category.Key))
+            {
                 $currentCategoryPolicies = $policies[$category.Key]
-                if ($currentCategoryPolicies) {
-                    $tableRows = foreach ($p in $currentCategoryPolicies) {
-                        $badgeClass = switch ($p.AssignmentType) {
-                            'All Users' { 'badge-all-users' }
-                            'All Devices' { 'badge-all-devices' }
-                            'Group' { 'badge-group' }
-                            'Exclude' { 'badge-exclude' }
-                            default { 'badge-none' }
+                if ($currentCategoryPolicies)
+                {
+                    $tableRows = foreach ($p in $currentCategoryPolicies)
+                    {
+                        $badgeClass = switch ($p.AssignmentType)
+                        {
+                            'All Users'
+                            {
+                                'badge-all-users'
+                            }
+                            'All Devices'
+                            {
+                                'badge-all-devices'
+                            }
+                            'Group'
+                            {
+                                'badge-group'
+                            }
+                            'Exclude'
+                            {
+                                'badge-exclude'
+                            }
+                            default
+                            {
+                                'badge-none'
+                            }
                         }
                         "<tr>
                             <td>$($p.Name)</td>

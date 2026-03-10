@@ -7062,16 +7062,28 @@ do {
         '7' {
             Write-Host "Generating HTML Report..." -ForegroundColor Green
 
-            # Download html-export.ps1 from GitHub
+            # Use local html-export.ps1 if available alongside this script, otherwise fall back to downloading from GitHub
             $htmlExportUrl = "https://raw.githubusercontent.com/ugurkocde/IntuneAssignmentChecker/main/html-export.ps1"
-            # Use cross-platform temp path
+            # Use cross-platform temp path (only needed if we end up downloading)
             $tempDir = if ($env:TEMP) { $env:TEMP } elseif ($env:TMPDIR) { $env:TMPDIR } else { [System.IO.Path]::GetTempPath() }
             $scriptPath = Join-Path $tempDir 'html-export.ps1'
+            $downloadedScript = $false
+
+            # Resolve the directory containing the running script
+            $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Get-Location }
+            $localHtmlExport = Join-Path $scriptDir 'html-export.ps1'
 
             try {
-                Write-Host "Downloading html-export.ps1 from GitHub..." -ForegroundColor Yellow
-                Invoke-WebRequest -Uri $htmlExportUrl -OutFile $scriptPath -UseBasicParsing
-                Write-Host "Download complete." -ForegroundColor Green
+                if (Test-Path $localHtmlExport) {
+                    Write-Host "Using local html-export.ps1..." -ForegroundColor Yellow
+                    $scriptPath = $localHtmlExport
+                }
+                else {
+                    Write-Host "Downloading html-export.ps1 from GitHub..." -ForegroundColor Yellow
+                    Invoke-WebRequest -Uri $htmlExportUrl -OutFile $scriptPath -UseBasicParsing
+                    Write-Host "Download complete." -ForegroundColor Green
+                    $downloadedScript = $true
+                }
 
                 . $scriptPath
 
@@ -7111,8 +7123,8 @@ do {
                 Write-Host "Error: Failed to generate the HTML report. $($_.Exception.Message)" -ForegroundColor Red
             }
             finally {
-                # Clean up the downloaded script
-                if ($scriptPath -and (Test-Path $scriptPath -ErrorAction SilentlyContinue)) {
+                # Only clean up if we downloaded the script to a temp location (not the local copy)
+                if ($downloadedScript -and $scriptPath -and (Test-Path $scriptPath -ErrorAction SilentlyContinue)) {
                     Remove-Item $scriptPath -Force
                     Write-Host "Cleaned up temporary files." -ForegroundColor Gray
                 }
